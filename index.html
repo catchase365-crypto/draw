@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>纤细笔锋小黑板 (滚动修复版)</title>
+    <style>
+        /* 基础设置 */
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; /* 防止整个页面弹性滚动 */
+            background-color: #000; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        }
+
+        /* --- 核心修复：只在画布上禁止触摸滚动 --- */
+        #drawing-board { 
+            display: block; 
+            width: 100vw; height: 100vh; 
+            background-color: #000;
+            touch-action: none; /* 关键：画布区域完全接管触摸，禁止浏览器处理 */
+        }
+        
+        .controls {
+            position: fixed; bottom: 30px; left: 0; right: 0;
+            display: flex; justify-content: center; align-items: center;
+            gap: 20px; pointer-events: none; z-index: 100;
+        }
+        .btn {
+            width: 55px; height: 55px; border-radius: 50%; background-color: #222;
+            border: 2px solid #333; color: #eee; display: flex; align-items: center;
+            justify-content: center; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            pointer-events: auto; transition: all 0.1s; font-size: 22px; cursor: pointer;
+        }
+        .btn:active { transform: scale(0.9); background-color: #444; }
+        .rect-btn { border-radius: 12px; }
+
+        /* 底部防误触区域 */
+        .safe-area-guard {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 95px; /* 覆盖按钮及其下方区域 */
+            z-index: 80; /* 在画布之上，按钮之下 */
+            pointer-events: auto; 
+            background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%);
+        }
+
+        /* --- 风格选择菜单 (滚动修复) --- */
+        #style-menu {
+            position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) scale(0.9);
+            width: 280px; 
+            background: rgba(30, 30, 30, 0.98); 
+            backdrop-filter: blur(10px);
+            border: 1px solid #555; border-radius: 16px; padding: 10px;
+            display: none; flex-direction: column; gap: 8px; z-index: 200;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8); opacity: 0; transition: opacity 0.2s, transform 0.2s;
+            
+            /* 关键修复：允许菜单区域垂直滚动 */
+            max-height: 50vh; 
+            overflow-y: auto; 
+            touch-action: pan-y !important; 
+            -webkit-overflow-scrolling: touch; /* iOS 流畅滚动支持 */
+            overscroll-behavior: contain; /* 防止滚动传导到背景 */
+        }
+        #style-menu.show { display: flex; opacity: 1; transform: translateX(-50%) scale(1); }
+        
+        .style-option {
+            padding: 16px; color: #ddd; border-radius: 10px; cursor: pointer;
+            font-size: 15px; display: flex; justify-content: space-between; align-items: center;
+            background: #252525; border: 1px solid transparent; 
+            flex-shrink: 0; /* 防止子元素被挤压 */
+        }
+        .style-option:active { background: #444; }
+        .style-option.active { border-color: #0f0; color: #fff; background: #1a3a1a; }
+        .style-option span:last-child { font-size: 20px; }
+
+        /* AI 覆盖层 */
+        #ai-overlay { 
+            position: absolute; pointer-events: none; z-index: 50; display: none; 
+            object-fit: contain; transform-origin: top left; background-color: #000;
+        }
+
+        /* 提示与弹窗 */
+        #loading-toast { 
+            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); 
+            background: rgba(0,0,0,0.9); color: #0f0; padding: 15px 25px; 
+            border-radius: 30px; font-size: 14px; display: none; z-index: 200; 
+            border: 1px solid #333; box-shadow: 0 0 20px rgba(0, 255, 0, 0.2); 
+            text-align: center; white-space: nowrap;
+        }
+        #api-modal { 
+            position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); 
+            width: 90%; max-width: 300px; background: #222; padding: 20px; 
+            border-radius: 16px; border: 1px solid #444; display: none; 
+            flex-direction: column; gap: 15px; z-index: 300; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9); 
+        }
+        #api-modal h3 { margin: 0; color: #fff; font-size: 16px; text-align: center; }
+        #api-modal input { background: #111; border: 1px solid #444; color: #fff; padding: 12px; border-radius: 8px; outline: none; width: 100%; }
+        #api-modal button { background: #333; color: #fff; border: none; padding: 10px; border-radius: 8px; width: 100%; margin-top: 5px; font-weight: bold; }
+        
+        .shake { animation: shake 0.5s; }
+        @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } 100% { transform: translateX(0); } }
+    </style>
+</head>
+<body>
+    <canvas id="drawing-board"></canvas>
+    <div class="safe-area-guard"></div>
+    <img id="ai-overlay" alt="AI Result" />
+    
+    <div id="loading-toast">
+        <div id="loading-text">🎨 AI 正在绘图...</div>
+    </div>
+
+    <div id="style-menu">
+        <div class="style-option active" data-style="neon">
+            <span>✨ 实体霓虹灯牌</span><span>⚡</span>
+        </div>
+        <div class="style-option" data-style="ghibli">
+            <span>🍃 宫崎骏动漫彩绘</span><span>☁️</span>
+        </div>
+        <div class="style-option" data-style="plush">
+            <span>🧸 毛绒玩具质感</span><span>🧶</span>
+        </div>
+        <div class="style-option" data-style="fire">
+            <span>🔥 燃烧的实体</span><span>🔥</span>
+        </div>
+        <div class="style-option" data-style="water">
+            <span>💧 3D 水晶流体</span><span>💧</span>
+        </div>
+        <div class="style-option" data-style="scifi">
+            <span>🛸 赛博机械装置</span><span>🤖</span>
+        </div>
+        <div class="style-option" data-style="jewel">
+            <span>💎 3D 立体宝石</span><span>💍</span>
+        </div>
+        <div class="style-option" data-style="food">
+            <span>🍔 美味食物诱惑</span><span>🍟</span>
+        </div>
+        <div class="style-option" data-style="clay">
+            <span>🎨 3D 粘土公仔</span><span>🗿</span>
+        </div>
+        <div class="style-option" data-style="sketch">
+            <span>✏️ 达芬奇素描 (原版)</span><span>📜</span>
+        </div>
+    </div>
+    
+    <div id="api-modal">
+        <h3>设置 Gemini API Key</h3>
+        <input type="password" id="apiKeyInput" placeholder="粘贴 Key">
+        <button id="saveKeyBtn" style="background:#060">保存</button>
+        <button id="closeKeyBtn">关闭</button>
+    </div>
+
+    <div class="controls">
+        <div class="btn" id="clearBtn"><span>🗑️</span></div>
+        <div class="btn rect-btn" id="magicBtn"><span>✨</span></div>
+        <div class="btn rect-btn" id="exportBtn"><span>💾</span></div>
+        <div class="btn rect-btn" id="fullscreenBtn"><span>⛶</span></div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('drawing-board');
+    const ctx = canvas.getContext('2d', { desynchronized: true });
+    
+    // --- 绘画核心 ---
+    let points = [];
+    let isDrawing = false;
+    let currentWidth = 1.0; 
+    const MAX_WIDTH = 2.8; const MIN_WIDTH = 0.6; const SMOOTH_FACTOR = 0.7;
+
+    function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const { width, height } = document.documentElement.getBoundingClientRect();
+        
+        const temp = document.createElement('canvas');
+        temp.width = canvas.width; temp.height = canvas.height;
+        if(canvas.width > 0) temp.getContext('2d').drawImage(canvas, 0, 0);
+
+        canvas.width = width * dpr; canvas.height = height * dpr;
+        canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+
+        ctx.scale(dpr, dpr); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        
+        const grad = ctx.createLinearGradient(0, 0, width, height);
+        grad.addColorStop(0, '#ff3e3e'); grad.addColorStop(0.2, '#fbff00');
+        grad.addColorStop(0.4, '#3eff53'); grad.addColorStop(0.6, '#3e93ff');
+        grad.addColorStop(0.8, '#b83eff'); grad.addColorStop(1, '#ff3ed5');
+        ctx.strokeStyle = grad; ctx.shadowBlur = 0.5; ctx.shadowColor = 'rgba(255,255,255,0.2)';
+
+        if(temp.width > 0) { ctx.save(); ctx.scale(1/dpr, 1/dpr); ctx.drawImage(temp, 0, 0); ctx.restore(); }
+    }
+
+    function getInput(e) {
+        const rect = canvas.getBoundingClientRect();
+        const event = e.touches ? e.touches[0] : e;
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top, force: event.force || 0, time: Date.now() };
+    }
+
+    // --- 绘画事件监听 (关键修复：只监听 Canvas) ---
+    function startDrawing(e) {
+        if (document.getElementById('ai-overlay').style.display === 'block') return;
+        
+        // 如果点击的是菜单，直接退出，允许浏览器处理点击和滚动
+        if (e.target.closest('#style-menu') || e.target.closest('.controls') || e.target.closest('#api-modal') || e.target.closest('.safe-area-guard')) {
+            return;
+        }
+
+        // 如果菜单开着，点别的地方就关掉菜单
+        const menu = document.getElementById('style-menu');
+        if (menu.classList.contains('show')) {
+            menu.classList.remove('show');
+            return;
+        }
+
+        isDrawing = true;
+        points = [getInput(e)];
+        currentWidth = 1.5;
+        // 只有确认为绘画时，才阻止默认行为（防止画布滚动）
+        if (e.cancelable) e.preventDefault();
+    }
+
+    function draw(e) {
+        if (!isDrawing) return;
+        
+        // 再次确认防止意外
+        if (e.target.closest('#style-menu')) return;
+
+        const input = getInput(e);
+        points.push(input);
+        if (points.length > 2) {
+            const p1 = points[points.length - 2], p2 = points[points.length - 1];
+            const speed = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)) / (p2.time - p1.time || 1);
+            let targetWidth = input.force > 0 ? MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * input.force : Math.max(MIN_WIDTH, MAX_WIDTH - speed * 0.5);
+            currentWidth = currentWidth * SMOOTH_FACTOR + targetWidth * (1 - SMOOTH_FACTOR);
+            ctx.beginPath(); ctx.lineWidth = currentWidth;
+            const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+            const prev = points.length > 3 ? { x: (points[points.length-3].x + p1.x)/2, y: (points[points.length-3].y + p1.y)/2 } : p1;
+            ctx.moveTo(prev.x, prev.y); ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y); ctx.stroke();
+            if (points.length > 5) points.shift();
+        }
+        if (e.cancelable) e.preventDefault();
+    }
+
+    function stopDrawing() {
+        isDrawing = false;
+        points = [];
+    }
+
+    // 将监听器直接绑定到 Canvas，避免干扰全局
+    // 使用 passive: false 允许我们在绘画时调用 preventDefault
+    canvas.addEventListener('touchstart', startDrawing, {passive:false});
+    canvas.addEventListener('touchmove', draw, {passive:false});
+    canvas.addEventListener('touchend', stopDrawing);
+    canvas.addEventListener('touchcancel', stopDrawing);
+    
+    // 鼠标兼容
+    canvas.addEventListener('mousedown', startDrawing);
+    window.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDrawing);
+
+
+    // --- AI 核心逻辑 ---
+    const STYLES = {
+        neon: "A high-quality 3D render of a solid glowing neon sign. Thick glass tubes filled with vibrant gas. Cinematic lighting, pure solid black background #000000.",
+        ghibli: "Studio Ghibli anime style illustration. A fully colored and painted character or object. Lush details, vibrant colors, solid black background #000000.",
+        plush: "A cute, fluffy plush toy. Soft fabric texture, 3D realistic render, soft lighting, solid black background #000000.",
+        fire: "A blazing entity made of fire and magma. Volumetric fire effects, embers, dynamic lighting, solid black background #000000.",
+        water: "A 3D simulation of a crystal clear water splash. Refraction, droplets, glossy surface, solid black background #000000.",
+        scifi: "A complex mechanical robot part or sci-fi gadget. Metal plating, glowing LEDs, realistic 3D render, solid black background #000000.",
+        jewel: "A precious faceted gemstone. Translucent, sparkling, diamond-like refraction, solid black background #000000.",
+        food: "A delicious food item or dessert. High resolution food photography, realistic texture, solid black background #000000.",
+        clay: "A cute 3D claymation figure. Plasticine texture, smooth edges, soft lighting, solid black background #000000.",
+        sketch: "Da Vinci style vintage sketch, intricate hatching, masterpiece drawing on a pure black background #000000."
+    };
+
+    let currentStyleKey = 'neon'; 
+    const styleMenu = document.getElementById('style-menu');
+
+    // 风格菜单点击逻辑
+    document.querySelectorAll('.style-option').forEach(opt => {
+        opt.onclick = (e) => {
+            // 不再需要 stopPropagation，因为 click 事件不会触发 canvas 的 touchstart
+            document.querySelectorAll('.style-option').forEach(o => o.classList.remove('active'));
+            opt.classList.add('active');
+            currentStyleKey = opt.dataset.style;
+            styleMenu.classList.remove('show');
+            setTimeout(() => runAI(), 100);
+        };
+    });
+
+    // 魔法按钮长按逻辑
+    const magicBtn = document.getElementById('magicBtn');
+    let magicTimer = null;
+    let isMagicLong = false;
+
+    const handleMagicStart = (e) => {
+        if(e.cancelable) e.preventDefault();
+        isMagicLong = false;
+        magicBtn.style.transform = "scale(0.9)";
+        
+        magicTimer = setTimeout(() => {
+            isMagicLong = true;
+            styleMenu.classList.add('show');
+            if(navigator.vibrate) navigator.vibrate(50);
+        }, 500); 
+    };
+
+    const handleMagicEnd = (e) => {
+        magicBtn.style.transform = "scale(1)";
+        if (magicTimer) clearTimeout(magicTimer);
+        
+        if (!isMagicLong) {
+            if (styleMenu.classList.contains('show')) {
+                styleMenu.classList.remove('show');
+            } else {
+                runAI();
+            }
+        }
+    };
+
+    magicBtn.addEventListener('mousedown', handleMagicStart);
+    magicBtn.addEventListener('touchstart', handleMagicStart, {passive:false});
+    magicBtn.addEventListener('mouseup', handleMagicEnd);
+    magicBtn.addEventListener('touchend', handleMagicEnd);
+
+    async function runAI() {
+        const key = localStorage.getItem('gemini_key');
+        if (!key) {
+            document.getElementById('api-modal').style.display = 'flex';
+            return;
+        }
+
+        const bounds = getDrawingBounds();
+        if (!bounds) return alert("请先画点东西");
+
+        const loading = document.getElementById('loading-toast');
+        const loadingText = document.getElementById('loading-text');
+        const aiOverlay = document.getElementById('ai-overlay');
+
+        const tempC = document.createElement('canvas');
+        tempC.width = bounds.w; tempC.height = bounds.h;
+        const tCtx = tempC.getContext('2d');
+        tCtx.fillStyle = '#000000'; 
+        tCtx.fillRect(0,0,bounds.w,bounds.h);
+        tCtx.drawImage(canvas, bounds.l, bounds.t, bounds.w, bounds.h, 0, 0, bounds.w, bounds.h);
+        const base64Img = tempC.toDataURL('image/png').split(',')[1];
+
+        loading.style.display = 'block';
+        loadingText.innerText = `AI 正在构想：${document.querySelector(`[data-style="${currentStyleKey}"] span`).innerText.split(' ')[1]}`;
+
+        const stylePrompt = STYLES[currentStyleKey];
+        const fullPrompt = `${stylePrompt} The input image is a rough sketch. Your task is to generate a FULLY RENDERED version in the specified style. The background MUST be solid pure black (#000000). Do NOT show any of the original sketch lines or brush strokes in the result. Replace the sketch entirely with a high-quality solid object. Output image only.`;
+
+        const MODEL_NAME = 'gemini-2.5-flash-image'; 
+
+        try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${key}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: fullPrompt },
+                            { inline_data: { mime_type: "image/png", data: base64Img } }
+                        ]
+                    }],
+                    generationConfig: {
+                        responseModalities: ['IMAGE'], 
+                        temperature: 1.0
+                    }
+                })
+            });
+
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error.message);
+
+            let aiBase64 = null;
+            if (data.candidates?.[0]?.content?.parts) {
+                const part = data.candidates[0].content.parts.find(p => p.inline_data || p.inlineData);
+                if (part) aiBase64 = (part.inline_data || part.inlineData).data;
+            }
+
+            if (!aiBase64) throw new Error("AI没有返回图片数据");
+
+            const binStr = atob(aiBase64);
+            const len = binStr.length;
+            const bytes = new Uint8Array(len);
+            for (let i=0; i<len; i++) bytes[i] = binStr.charCodeAt(i);
+            const blob = new Blob([bytes], {type: 'image/png'});
+            
+            aiOverlay.onload = () => {
+                const dpr = window.devicePixelRatio || 1;
+                aiOverlay.style.left = (bounds.l / dpr) + 'px';
+                aiOverlay.style.top = (bounds.t / dpr) + 'px';
+                aiOverlay.style.width = (bounds.w / dpr) + 'px';
+                aiOverlay.style.height = (bounds.h / dpr) + 'px';
+                aiOverlay.style.display = 'block';
+                loading.style.display = 'none';
+                window.lastAiBlob = blob;
+            };
+            aiOverlay.src = URL.createObjectURL(blob);
+
+        } catch (e) {
+            alert("生成失败: " + e.message);
+            loading.style.display = 'none';
+        }
+    }
+
+    function getDrawingBounds() {
+        const dpr = window.devicePixelRatio || 1;
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let l = canvas.width, t = canvas.height, r = 0, b = 0, found = false;
+        for (let y = 0; y < canvas.height; y+=4) {
+            for (let x = 0; x < canvas.width; x+=4) {
+                const idx = (y * canvas.width + x) * 4;
+                if (imgData[idx] > 20 || imgData[idx+1] > 20 || imgData[idx+2] > 20) {
+                    l = Math.min(l, x); r = Math.max(r, x); t = Math.min(t, y); b = Math.max(b, y); found = true;
+                }
+            }
+        }
+        if (!found) return null;
+        const p = 20 * dpr;
+        return { l: Math.max(0, l-p), t: Math.max(0, t-p), w: Math.min(canvas.width, r+p)-Math.max(0, l-p), h: Math.min(canvas.height, b+p)-Math.max(0, t-p) };
+    }
+
+    document.getElementById('exportBtn').onclick = () => {
+        const bounds = getDrawingBounds();
+        if(!bounds) return;
+        const dl = (u, n) => { const a = document.createElement('a'); a.download = n; a.href = u; a.click(); };
+        const c = document.createElement('canvas');
+        c.width = bounds.w; c.height = bounds.h;
+        const cx = c.getContext('2d');
+        cx.fillStyle = '#000'; cx.fillRect(0,0,bounds.w,bounds.h);
+        cx.drawImage(canvas, bounds.l, bounds.t, bounds.w, bounds.h, 0, 0, bounds.w, bounds.h);
+        dl(c.toDataURL(), `手绘_${Date.now()}.png`);
+        if (window.lastAiBlob) setTimeout(() => dl(URL.createObjectURL(window.lastAiBlob), `AI_${Date.now()}.png`), 300);
+    };
+
+    const clearBtn = document.getElementById('clearBtn');
+    let clrTimer, isClrLong = false;
+    const startClr = (e) => {
+        if(e.cancelable) e.preventDefault();
+        isClrLong = false; clearBtn.style.transform="scale(0.9)";
+        clrTimer = setTimeout(()=>{
+            isClrLong = true;
+            document.getElementById('ai-overlay').style.display='none';
+            window.lastAiBlob = null;
+            clearBtn.classList.add('shake'); setTimeout(()=>clearBtn.classList.remove('shake'),500);
+            alert("已移除 AI 图层");
+        }, 600);
+    };
+    const endClr = () => {
+        clearBtn.style.transform="scale(1)"; clearTimeout(clrTimer);
+        if(!isClrLong) {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            document.getElementById('ai-overlay').style.display='none';
+            window.lastAiBlob = null;
+        }
+    };
+    clearBtn.addEventListener('mousedown', startClr); clearBtn.addEventListener('touchstart', startClr, {passive:false});
+    clearBtn.addEventListener('mouseup', endClr); clearBtn.addEventListener('touchend', endClr);
+
+    document.getElementById('saveKeyBtn').onclick = () => {
+        const v = document.getElementById('apiKeyInput').value;
+        if(v) { localStorage.setItem('gemini_key', v); document.getElementById('api-modal').style.display='none'; }
+    };
+    document.getElementById('closeKeyBtn').onclick = () => document.getElementById('api-modal').style.display='none';
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    let fsTimer = null;
+    let isFsLong = false;
+
+    const handleFsStart = (e) => {
+        if (e.cancelable) e.preventDefault();
+        isFsLong = false;
+        fullscreenBtn.style.transform = "scale(0.9)";
+        fsTimer = setTimeout(() => {
+            isFsLong = true;
+            document.getElementById('api-modal').style.display = 'flex';
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 500);
+    };
+
+    const handleFsEnd = (e) => {
+        fullscreenBtn.style.transform = "scale(1)";
+        if (fsTimer) clearTimeout(fsTimer);
+        if (!isFsLong) {
+            !document.fullscreenElement ? document.documentElement.requestFullscreen() : document.exitFullscreen();
+        }
+    };
+
+    fullscreenBtn.addEventListener('mousedown', handleFsStart);
+    fullscreenBtn.addEventListener('touchstart', handleFsStart, { passive: false });
+    fullscreenBtn.addEventListener('mouseup', handleFsEnd);
+    fullscreenBtn.addEventListener('touchend', handleFsEnd);
+
+    window.onresize = resizeCanvas;
+    window.onload = resizeCanvas;
+</script>
+</body>
+</html>
