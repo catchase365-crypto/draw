@@ -35,6 +35,7 @@
             pointer-events: auto; transition: all 0.1s; font-size: 22px; cursor: pointer;
         }
         .btn:active { transform: scale(0.9); background-color: #444; }
+        .btn.active-mode { border-color: #0f0; color: #0f0; background-color: #1a3a1a; }
         .rect-btn { border-radius: 12px; }
 
         /* 底部防误触区域 */
@@ -49,24 +50,50 @@
             background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%);
         }
 
-        /* --- 风格选择菜单 (滚动修复) --- */
+        /* --- 风格选择菜单修复版 --- */
         #style-menu {
-            position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) scale(0.9);
-            width: 280px; 
-            background: rgba(30, 30, 30, 0.98); 
-            backdrop-filter: blur(10px);
-            border: 1px solid #555; border-radius: 16px; padding: 10px;
-            display: none; flex-direction: column; gap: 8px; z-index: 200;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.8); opacity: 0; transition: opacity 0.2s, transform 0.2s;
-            
-            /* 关键修复：允许菜单区域垂直滚动 */
-            max-height: 50vh; 
-            overflow-y: auto; 
-            touch-action: pan-y !important; 
-            -webkit-overflow-scrolling: touch; /* iOS 流畅滚动支持 */
-            overscroll-behavior: contain; /* 防止滚动传导到背景 */
+            position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) scale(0.9);
+            width: 92%; max-width: 500px; height: 50vh;
+            background: rgba(25, 25, 25, 0.98); 
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid #444; border-radius: 20px; 
+            display: none; flex-direction: row; overflow: hidden; 
+            z-index: 2000; /* 确保在最上层 */
+            box-shadow: 0 15px 50px rgba(0,0,0,0.9); 
+            opacity: 0; transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none; /* 默认不响应点击，防止隐藏时误触 */
+            touch-action: none; /* 整体禁止外层滑动，内层单独处理 */
         }
-        #style-menu.show { display: flex; opacity: 1; transform: translateX(-50%) scale(1); }
+        #style-menu.show { display: flex; opacity: 1; transform: translateX(-50%) scale(1); pointer-events: auto; }
+
+        .menu-sidebar {
+            width: 85px; background: #151515; border-right: 1px solid #333;
+            overflow-y: auto; flex-shrink: 0; display: flex; flex-direction: column;
+            -webkit-overflow-scrolling: touch;
+        }
+        .category-btn {
+            padding: 12px 5px; text-align: center; color: #777; font-size: 11px;
+            cursor: pointer; border-bottom: 1px solid #222; display: flex; flex-direction: column; align-items: center;
+        }
+        .category-btn.active {
+            background: #222; color: #0f0; border-left: 3px solid #0f0;
+        }
+        .category-btn span:first-child { font-size: 22px; }
+
+        .menu-content {
+            flex: 1; overflow-y: auto; padding: 12px; display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px; align-content: start; -webkit-overflow-scrolling: touch;
+            touch-action: pan-y; /* 允许详情列表垂直滚动 */
+        }
+        
+        .style-option {
+            padding: 12px 8px; color: #ccc; border-radius: 12px; background: #333; 
+            border: 1px solid #444; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; gap: 4px; text-align: center;
+        }
+        .style-option.active { border-color: #0f0; color: #fff; background: #1a3a1a; }
+        .style-option .icon { font-size: 24px; }
         
         .style-option {
             padding: 16px; color: #ddd; border-radius: 10px; cursor: pointer;
@@ -117,36 +144,8 @@
     </div>
 
     <div id="style-menu">
-        <div class="style-option active" data-style="neon">
-            <span>✨ 实体霓虹灯牌</span><span>⚡</span>
-        </div>
-        <div class="style-option" data-style="ghibli">
-            <span>🍃 宫崎骏动漫彩绘</span><span>☁️</span>
-        </div>
-        <div class="style-option" data-style="plush">
-            <span>🧸 毛绒玩具质感</span><span>🧶</span>
-        </div>
-        <div class="style-option" data-style="fire">
-            <span>🔥 燃烧的实体</span><span>🔥</span>
-        </div>
-        <div class="style-option" data-style="water">
-            <span>💧 3D 水晶流体</span><span>💧</span>
-        </div>
-        <div class="style-option" data-style="scifi">
-            <span>🛸 赛博机械装置</span><span>🤖</span>
-        </div>
-        <div class="style-option" data-style="jewel">
-            <span>💎 3D 立体宝石</span><span>💍</span>
-        </div>
-        <div class="style-option" data-style="food">
-            <span>🍔 美味食物诱惑</span><span>🍟</span>
-        </div>
-        <div class="style-option" data-style="clay">
-            <span>🎨 3D 粘土公仔</span><span>🗿</span>
-        </div>
-        <div class="style-option" data-style="sketch">
-            <span>✏️ 达芬奇素描 (原版)</span><span>📜</span>
-        </div>
+        <div class="menu-sidebar" id="category-list"></div>
+        <div class="menu-content" id="style-list"></div>
     </div>
     
     <div id="api-modal">
@@ -157,8 +156,12 @@
     </div>
 
     <div class="controls">
+        <div class="btn" id="undoBtn"><span>↩️</span></div>
+        <div class="btn" id="redoBtn"><span>↪️</span></div>
         <div class="btn" id="clearBtn"><span>🗑️</span></div>
         <div class="btn rect-btn" id="magicBtn"><span>✨</span></div>
+        <div class="btn" id="eraserBtn" title="橡皮擦"><span>🧽</span></div>
+        <div class="btn" id="stylusBtn" title="手写笔模式"><span>🖐️</span></div>
         <div class="btn rect-btn" id="exportBtn"><span>💾</span></div>
         <div class="btn rect-btn" id="fullscreenBtn"><span>⛶</span></div>
     </div>
@@ -169,9 +172,67 @@
     
     // --- 绘画核心 ---
     let points = [];
+    let allPaths = [];
+    let currentPath = null;
     let isDrawing = false;
     let currentWidth = 1.0; 
+    let stylusOnlyMode = false;
+    let isEraserMode = false;
     const MAX_WIDTH = 2.8; const MIN_WIDTH = 0.6; const SMOOTH_FACTOR = 0.7;
+
+    // --- 历史记录与持久化 ---
+    let history = [];
+    let historyIndex = -1;
+
+    function saveHistory() {
+        historyIndex++;
+        history.splice(historyIndex);
+        history.push(JSON.stringify(allPaths));
+        if (history.length > 50) { history.shift(); historyIndex--; }
+        localStorage.setItem('chalkboard_data', JSON.stringify(allPaths));
+    }
+
+    function undo() {
+        if (historyIndex > 0) {
+            historyIndex--;
+            allPaths = JSON.parse(history[historyIndex]);
+            redraw();
+            localStorage.setItem('chalkboard_data', JSON.stringify(allPaths));
+        }
+    }
+
+    function redo() {
+        if (historyIndex < history.length - 1) {
+            historyIndex++;
+            allPaths = JSON.parse(history[historyIndex]);
+            redraw();
+            localStorage.setItem('chalkboard_data', JSON.stringify(allPaths));
+        }
+    }
+
+    function pointToSegDist(p, a, b) {
+        let l2 = Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2);
+        if (l2 == 0) return Math.sqrt(Math.pow(p.x - a.x, 2) + Math.pow(p.y - a.y, 2));
+        let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        return Math.sqrt(Math.pow(p.x - (a.x + t * (b.x - a.x)), 2) + Math.pow(p.y - (a.y + t * (b.y - a.y)), 2));
+    }
+
+    function redraw() {
+        ctx.clearRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+        allPaths.forEach(path => {
+            if (path.points.length < 2) return;
+            ctx.beginPath();
+            ctx.lineWidth = path.width;
+            const pts = path.points;
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length - 1; i++) {
+                const mid = { x: (pts[i].x + pts[i+1].x) / 2, y: (pts[i].y + pts[i+1].y) / 2 };
+                ctx.quadraticCurveTo(pts[i].x, pts[i].y, mid.x, mid.y);
+            }
+            ctx.stroke();
+        });
+    }
 
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
@@ -192,18 +253,38 @@
         grad.addColorStop(0.8, '#b83eff'); grad.addColorStop(1, '#ff3ed5');
         ctx.strokeStyle = grad; ctx.shadowBlur = 0.5; ctx.shadowColor = 'rgba(255,255,255,0.2)';
 
-        if(temp.width > 0) { ctx.save(); ctx.scale(1/dpr, 1/dpr); ctx.drawImage(temp, 0, 0); ctx.restore(); }
+        if(allPaths.length > 0) redraw();
+        else {
+            const saved = localStorage.getItem('chalkboard_data');
+            if (saved) {
+                allPaths = JSON.parse(saved);
+                history = [saved];
+                historyIndex = 0;
+                redraw();
+            } else if (history.length === 0) {
+                saveHistory();
+            }
+        }
     }
 
     function getInput(e) {
         const rect = canvas.getBoundingClientRect();
-        const event = e.touches ? e.touches[0] : e;
-        return { x: event.clientX - rect.left, y: event.clientY - rect.top, force: event.force || 0, time: Date.now() };
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            force: e.pressure !== undefined ? e.pressure : (e.force || 0),
+            time: Date.now(),
+            pointerType: e.pointerType,
+            buttons: e.buttons
+        };
     }
 
     // --- 绘画事件监听 (关键修复：只监听 Canvas) ---
     function startDrawing(e) {
         if (document.getElementById('ai-overlay').style.display === 'block') return;
+        
+        // 手写笔模式过滤
+        if (stylusOnlyMode && e.pointerType === 'touch') return;
         
         // 如果点击的是菜单，直接退出，允许浏览器处理点击和滚动
         if (e.target.closest('#style-menu') || e.target.closest('.controls') || e.target.closest('#api-modal') || e.target.closest('.safe-area-guard')) {
@@ -214,58 +295,215 @@
         const menu = document.getElementById('style-menu');
         if (menu.classList.contains('show')) {
             menu.classList.remove('show');
+            setTimeout(() => { menu.style.display = 'none'; }, 200);
+            return;
+        }
+
+        const input = getInput(e);
+        const isHardwareEraser = input.buttons === 32 || input.pointerType === 'eraser';
+        
+        if (isEraserMode || isHardwareEraser) {
+            isDrawing = true; 
+            handleEraser(input);
+            if (e.cancelable) e.preventDefault();
             return;
         }
 
         isDrawing = true;
-        points = [getInput(e)];
         currentWidth = 1.5;
-        // 只有确认为绘画时，才阻止默认行为（防止画布滚动）
+        currentPath = { points: [input], width: currentWidth };
+        allPaths.push(currentPath);
+        points = currentPath.points;
         if (e.cancelable) e.preventDefault();
+    }
+
+    function handleEraser(input) {
+        const threshold = 6;
+        let changed = false;
+        const oldLen = allPaths.length;
+        allPaths = allPaths.filter(path => {
+            for (let i = 0; i < path.points.length - 1; i++) {
+                if (pointToSegDist(input, path.points[i], path.points[i+1]) < threshold) {
+                    changed = true;
+                    return false;
+                }
+            }
+            return true;
+        });
+        if (changed) {
+            redraw();
+            saveHistory();
+        }
     }
 
     function draw(e) {
         if (!isDrawing) return;
-        
-        // 再次确认防止意外
-        if (e.target.closest('#style-menu')) return;
-
         const input = getInput(e);
+        const isHardwareEraser = input.buttons === 32 || input.pointerType === 'eraser';
+
+        if (isEraserMode || isHardwareEraser) {
+            handleEraser(input);
+            return;
+        }
+
+        if (!currentPath) return;
         points.push(input);
         if (points.length > 2) {
             const p1 = points[points.length - 2], p2 = points[points.length - 1];
             const speed = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)) / (p2.time - p1.time || 1);
             let targetWidth = input.force > 0 ? MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * input.force : Math.max(MIN_WIDTH, MAX_WIDTH - speed * 0.5);
             currentWidth = currentWidth * SMOOTH_FACTOR + targetWidth * (1 - SMOOTH_FACTOR);
+            currentPath.width = currentWidth;
+            
             ctx.beginPath(); ctx.lineWidth = currentWidth;
             const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
             const prev = points.length > 3 ? { x: (points[points.length-3].x + p1.x)/2, y: (points[points.length-3].y + p1.y)/2 } : p1;
             ctx.moveTo(prev.x, prev.y); ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y); ctx.stroke();
-            if (points.length > 5) points.shift();
         }
         if (e.cancelable) e.preventDefault();
     }
 
     function stopDrawing() {
+        if (isDrawing && currentPath) saveHistory();
         isDrawing = false;
         points = [];
+        currentPath = null;
     }
 
     // 将监听器直接绑定到 Canvas，避免干扰全局
     // 使用 passive: false 允许我们在绘画时调用 preventDefault
-    canvas.addEventListener('touchstart', startDrawing, {passive:false});
-    canvas.addEventListener('touchmove', draw, {passive:false});
-    canvas.addEventListener('touchend', stopDrawing);
-    canvas.addEventListener('touchcancel', stopDrawing);
+    // 使用 Pointer Events 以获得更好的 S-Pen 硬件按钮支持
+    canvas.addEventListener('pointerdown', startDrawing);
+    canvas.addEventListener('pointermove', draw);
+    canvas.addEventListener('pointerup', stopDrawing);
+    canvas.addEventListener('pointercancel', stopDrawing);
+
+
+    // --- AI 核心逻辑 (超级扩充版) ---
+    const STYLE_DATA = {
+        "光影能量": {
+            icon: "⚡",
+            styles: {
+                neon: { l: "霓虹灯牌", i: "✨", p: "A high-quality 3D render of a solid glowing neon sign. Thick glass tubes filled with vibrant gas. Cinematic lighting" },
+                biolum: { l: "生物荧光", i: "🍄", p: "Mystical bioluminescent organism style. Glowing veins, avatar-like flora, deep jungle night atmosphere, ethereal blue and purple glow" },
+                plasma: { l: "等离子电弧", i: "⚛️", p: "Pure energy plasma form. Crackling electric arcs, high voltage visual, translucent energy field, sci-fi energy weapon style" },
+                fire: { l: "烈焰燃烧", i: "🔥", p: "A blazing entity made of fire and magma. Volumetric fire effects, embers, dynamic lighting" },
+                hologram: { l: "全息投影", i: "🌐", p: "Star Wars style blue hologram. Scanlines, semi-transparent projection, digital glitch artifacts, glowing wireframe edges" },
+                xray: { l: "X光透视", i: "🦴", p: "High contrast X-ray photography. Inverted black and white, revealing internal skeletal structure or mechanism, glowing blue-white bones" },
+                laser: { l: "激光切割", i: "🔦", p: "Laser light show aesthetic. Sharp coherent light beams, fog scattering, vivid RGB colors, futuristic club lighting" },
+                bokeh: { l: "梦幻光斑", i: "🟠", p: "Abstract form made of defocused bokeh lights. City night aesthetic, shimmering circles of confusion, romantic lighting" },
+                lava: { l: "熔岩流动", i: "🌋", p: "Molten lava rock. Cracking black crust revealing bright orange magma inside, heat distortion, volcanic texture" },
+                lightning: { l: "雷霆万钧", i: "🌩️", p: "Form made of pure lightning bolts. Storm energy, jagged electric paths, bright white-blue flash" }
+            }
+        },
+        "材质工坊": {
+            icon: "💎",
+            styles: {
+                gold: { l: "24K纯金", i: "💰", p: "Masterpiece 3D render of a solid 24k gold sculpture. Mirror-like metallic reflections, high polish, luxurious lighting" },
+                glass: { l: "吹制玻璃", i: "🍶", p: "Hand-blown glass art. Smooth curves, caustics, dispersion of light, semi-transparent colorful glass" },
+                crystal: { l: "施华洛世奇", i: "💎", p: "Faceted crystal glass. Rainbow dispersion, sharp edges, diamond-like clarity, luxury jewelry render" },
+                liquid: { l: "水银流体", i: "💧", p: "Chrome liquid metal, T-1000 style. Perfectly reflective silver surface, fluid simulation, smooth distortion" },
+                jade: { l: "极品翡翠", i: "🐉", p: "Translucent imperial green jade. Oily luster, internal inclusions, smooth carving, oriental treasure" },
+                porcelain: { l: "青花瓷", i: "🏺", p: "Chinese blue and white porcelain. Glossy glaze, cobalt blue patterns on white ceramic, museum lighting" },
+                obsidian: { l: "黑曜石", i: "🔪", p: "Sharp carved obsidian. Volcanic glass, glossy black surface, razor sharp edges, purple reflections" },
+                amber: { l: "千万年琥珀", i: "🍯", p: "Golden amber with prehistoric inclusions. Warm subsurface scattering, fossilized tree resin texture" },
+                leather: { l: "植鞣皮革", i: "💼", p: "Handcrafted leather. Visible pores, stitching details, warm brown patina, tactile texture" },
+                velvet: { l: "丝绒质感", i: "🧣", p: "Luxurious red velvet fabric. Soft fuzzy texture, light absorption, royal attire material" },
+                wood: { l: "红木雕刻", i: "🪵", p: "Polished mahogany wood carving. Rich wood grain, varnished finish, antique furniture aesthetic" },
+                bubble: { l: "肥皂泡", i: "🫧", p: "Iridescent soap bubble form. Thin film interference, rainbow colors, extremely fragile and transparent" },
+                milk: { l: "牛奶溅射", i: "🥛", p: "High speed photography of milk splash. Subsurface scattering, smooth white liquid, crown splash effect" },
+                slime: { l: "史莱姆", i: "🦠", p: "Translucent green slime. Sticky texture, subsurface scattering, goo, dripping effect" }
+            }
+        },
+        "自然生态": {
+            icon: "🌿",
+            styles: {
+                floral: { l: "繁花盛开", i: "🌺", p: "Arrangement of fresh blooming flowers. Rose petals, dew drops, vibrant natural colors, macro photography" },
+                moss: { l: "微缩苔藓", i: "🪴", p: "Covered in lush green moss. Fuzzy texture, macro nature photography, forest floor aesthetic" },
+                coral: { l: "珊瑚礁", i: "🪸", p: "Vibrant underwater coral structure. Porous texture, sea anemones, marine life colors" },
+                ice: { l: "极地冰雕", i: "❄️", p: "Crystal clear glacier ice sculpture. Internal bubbles, frost patterns, cold blue tint, refraction" },
+                cloud: { l: "云朵捏捏", i: "☁️", p: "Fluffy cumulus cloud shaped like the object. Soft, airy, white vapor, blue sky lighting" },
+                insect: { l: "甲壳虫", i: "🪲", p: "Iridescent insect exoskeleton. Metallic chitin texture, compound eye details, macro insect photography" },
+                feather: { l: "羽毛编织", i: "🪶", p: "Constructed from colorful bird feathers. Soft texture, overlapping plumage, macaw parrot colors" },
+                bone: { l: "化石骨骼", i: "☠️", p: "Bleached dinosaur bone fossil. Porous texture, calcium white, museum specimen" },
+                cactus: { l: "多肉植物", i: "🌵", p: "Succulent plant texture. Plump green skin, tiny thorns, fresh botanical look" },
+                fruit: { l: "鲜果切片", i: "🥝", p: "Made of fresh fruit slices. Kiwi, orange, strawberry textures, juicy, wet surface" }
+            }
+        },
+        "艺术流派": {
+            icon: "🎨",
+            styles: {
+                sketch: { l: "达芬奇手稿", i: "📜", p: "Da Vinci style vintage sketch. Sepia paper, ink lines, hatching cross-hatching, engineering diagram" },
+                oil: { l: "厚涂油画", i: "🖼️", p: "Impasto oil painting. Thick visible brush strokes, textured canvas, Van Gogh style, vibrant color mixing" },
+                watercolor: { l: "水彩晕染", i: "🎨", p: "Wet-on-wet watercolor painting. Color bleeding, paper texture, soft pastel tones, artistic abstraction" },
+                ukiyo: { l: "浮世绘", i: "🌊", p: "Japanese Ukiyo-e woodblock print. Hokusai style, flat colors, bold outlines, traditional texture" },
+                pixel: { l: "像素艺术", i: "👾", p: "8-bit pixel art. Retro game sprite, limited color palette, blocky edges, nostalgic aesthetic" },
+                graffiti: { l: "街头涂鸦", i: "🛹", p: "Street art spray paint graffiti. Drips, vibrancy, wildstyle lettering feel, urban concrete texture" },
+                ink: { l: "水墨丹青", i: "🖌️", p: "Traditional Chinese ink wash painting. Splash ink, dry brush effects, zen minimalism, calligraphy style" },
+                stained: { l: "教堂彩窗", i: "⛪", p: "Stained glass window. Mosaic of colored glass, black lead outlines, light shining through" },
+                popart: { l: "波普艺术", i: "🥫", p: "Andy Warhol Pop Art style. Halftone dots, screen print texture, high contrast neon colors" },
+                chalk: { l: "黑板粉笔", i: "🖍️", p: "Chalk drawing on rough blackboard. Dusty texture, smudges, pastel colors on dark slate" }
+            }
+        },
+        "科幻奇幻": {
+            icon: "🚀",
+            styles: {
+                scifi: { l: "赛博机械", i: "🤖", p: "Complex mechanical robot part. Metal plating, glowing LEDs, exposed wires, industrial design" },
+                steampunk: { l: "蒸汽朋克", i: "⚙️", p: "Steampunk mechanism. Brass gears, copper pipes, steam vents, victorian engineering aesthetic" },
+                cyberpunk: { l: "夜之城", i: "🕶️", p: "Cyberpunk 2077 aesthetic. Neon pink and blue, rain-slicked wet surfaces, chrome implants" },
+                eldritch: { l: "克苏鲁", i: "🐙", p: "Eldritch horror organic matter. Tentacles, many eyes, slime, dark purple and green, unsettling texture" },
+                ghibli: { l: "宫崎骏", i: "🍃", p: "Studio Ghibli anime background art. Lush details, hand painted style, peaceful atmosphere, vibrant colors" },
+                vaporwave: { l: "蒸汽波", i: "🌴", p: "Vaporwave aesthetic. Greek statues, glitch art, pink and cyan gradient, retro 90s computer graphics" },
+                matrix: { l: "黑客帝国", i: "📟", p: "Matrix digital rain code. Glowing green falling katakana characters forming the shape, digital void" },
+                lowpoly: { l: "低多边形", i: "🔷", p: "Low poly 3D game art. Faceted geometric shapes, flat shading, minimal detail, retro aesthetic" },
+                lego: { l: "乐高积木", i: "🧱", p: "Constructed entirely of LEGO bricks. Plastic studs, blocky shape, toy photography" },
+                circuit: { l: "集成电路", i: "💾", p: "Green motherboard circuit texture. Gold pins, silicon chips, solder points, tech macro" }
+            }
+        },
+        "美味诱惑": {
+            icon: "🍔",
+            styles: {
+                food: { l: "美食摄影", i: "🥘", p: "Michelin star food photography. Delicious, savory, steam rising, garnish details" },
+                cake: { l: "翻糖蛋糕", i: "🎂", p: "Fondant cake decoration. Smooth icing, edible gold leaf, sugar craft, pastel colors" },
+                jelly: { l: "Q弹果冻", i: "🍮", p: "Translucent fruit jelly. Wobbling texture, trapped bubbles, subsurface scattering, yummy" },
+                candy: { l: "硬糖", i: "🍬", p: "Glossy hard candy texture. Sticky surface, vibrant artificial colors, sugar coating" },
+                bread: { l: "刚出炉面包", i: "🥐", p: "Freshly baked croissant texture. Flaky golden crust, buttery sheen, bakery macro" },
+                cheese: { l: "融化芝士", i: "🧀", p: "Melting cheddar cheese. Stretching, gooey, oily sheen, burger topping aesthetic" },
+                icecream: { l: "冰淇淋", i: "🍦", p: "Scoop of ice cream. Frost texture, melting edges, creamy surface, sweet dessert" },
+                chocolate: { l: "丝滑巧克力", i: "🍫", p: "Tempered dark chocolate. Snap texture, glossy finish, rich cocoa color" }
+            }
+        },
+        "雕塑工艺": {
+            icon: "🗿",
+            styles: {
+                clay: { l: "粘土公仔", i: "🧸", p: "Cute 3D claymation figure. Plasticine texture, fingerprints, soft lighting, stop-motion style" },
+                origami: { l: "折纸艺术", i: "🕊️", p: "Folded origami paper. Sharp creases, paper grain texture, geometric planes" },
+                marble: { l: "大理石雕", i: "🏛️", p: "Classical Carrara marble statue. Smooth white stone, grey veins, museum lighting" },
+                bronze: { l: "青铜器", i: "⚔️", p: "Antique bronze sculpture. Green patina oxidation, rough metal surface, historical artifact" },
+                papercut: { l: "剪纸光影", i: "🧧", p: "Layered paper cut light box. Backlit paper layers, silhouette depth, warm light glowing through" },
+                knitting: { l: "毛线编织", i: "🧶", p: "Knitted wool texture. Interlocking yarn loops, fuzzy fibers, cozy handmade look" },
+                embroidery: { l: "苏绣", i: "🪡", p: "Chinese silk embroidery. Thread texture, satin sheen, intricate needlework patterns" },
+                wax: { l: "蜡像", i: "🕯️", p: "Wax sculpture. Subsurface scattering, slightly translucent, soft smoothing, museum figure" },
+                wire: { l: "铁丝绕线", i: "➰", p: "Wireframe sculpture made of tangled copper wires. Industrial art, metallic mesh, transparent structure" },
+                balloon: { l: "气球狗", i: "🎈", p: "Jeff Koons style balloon animal. Highly reflective metallic latex, inflated pressure, smooth curves" }
+            }
+        },
+        "抽象异想": {
+            icon: "🌀",
+            styles: {
+                smoke: { l: "彩色烟雾", i: "💨", p: "Form made of swirling colored smoke. Wispy, turbulent, dispersion, studio lighting" },
+                fur: { l: "长毛怪", i: "🦁", p: "Covered in long thick fur. Monsters Inc style, hair simulation, soft wind blowing" },
+                spaghetti: { l: "意面缠绕", i: "🍝", p: "Made of tangled spaghetti noodles. Chaotic strands, pasta texture, weird aesthetic" },
+                void: { l: "虚空物质", i: "⚫", p: "Vantablack object. Absorb all light, only silhouette visible against a slightly lighter dark background, abyss" },
+                mosaic: { l: "马赛克", i: "🧩", p: "Ceramic tile mosaic. Grout lines, broken tile pieces, ancient roman floor style" },
+                glitter: { l: "闪粉爆炸", i: "✨", p: "Covered in dense glitter. Sparkles, sequins, disco ball reflection, party aesthetic" },
+                bandage: { l: "木乃伊", i: "🤕", p: "Wrapped in white medical bandages. Mummy style, fabric layers, texture overlap" },
+                foil: { l: "锡纸包裹", i: "🥡", p: "Crinkled aluminum foil texture. High contrast reflections, metallic wrinkles, kitchen wrap" }
+            }
+        }
+    };
     
-    // 鼠标兼容
-    canvas.addEventListener('mousedown', startDrawing);
-    window.addEventListener('mousemove', draw);
-    window.addEventListener('mouseup', stopDrawing);
-
-
-    // --- AI 核心逻辑 ---
-    const STYLES = {
+    const STYLES_OLD = {
         neon: "A high-quality 3D render of a solid glowing neon sign. Thick glass tubes filled with vibrant gas. Cinematic lighting, pure solid black background #000000.",
         ghibli: "Studio Ghibli anime style illustration. A fully colored and painted character or object. Lush details, vibrant colors, solid black background #000000.",
         plush: "A cute, fluffy plush toy. Soft fabric texture, 3D realistic render, soft lighting, solid black background #000000.",
@@ -275,23 +513,81 @@
         jewel: "A precious faceted gemstone. Translucent, sparkling, diamond-like refraction, solid black background #000000.",
         food: "A delicious food item or dessert. High resolution food photography, realistic texture, solid black background #000000.",
         clay: "A cute 3D claymation figure. Plasticine texture, smooth edges, soft lighting, solid black background #000000.",
-        sketch: "Da Vinci style vintage sketch, intricate hatching, masterpiece drawing on a pure black background #000000."
+        sketch: "Da Vinci style vintage sketch, intricate hatching, masterpiece drawing on a pure black background #000000.",
+        porcelain: "A high-quality 3D render of an exquisite Chinese porcelain object. Fine white ceramic with elegant blue and white glazed patterns, smooth glossy finish, cinematic lighting, pure solid black background #000000.",
+        jade: "A masterpiece 3D render of a solid jade carving. Translucent green jade stone with intricate details, polished smooth surface, internal light scattering, pure solid black background #000000.",
+        wood: "A realistic 3D render of a solid wood carving. Natural mahogany grain texture, polished finish, intricate details, cinematic lighting, pure solid black background #000000.",
+        gold: "A masterpiece 3D render of a solid 24k gold sculpture. Mirror-like metallic reflections, high polish, luxurious lighting, pure solid black background #000000.",
+        marble: "A high-quality 3D render of a classical marble statue. Smooth white Carrara marble with subtle grey veins, museum lighting, pure solid black background #000000.",
+        bronze: "Antique 3D bronze sculpture with green patina. Aged metal texture, historical artifact style, cinematic lighting, pure solid black background #000000.",
+        ice: "A stunning 3D ice sculpture. Crystal clear frozen ice with internal bubbles and frost, refraction, cinematic lighting, pure solid black background #000000.",
+        amber: "Translucent ancient amber stone. Warm honey color, internal prehistoric inclusions, polished organic surface, pure solid black background #000000.",
+        leather: "A detailed handcrafted leather object. Tooled leather texture, visible stitching, tanned brown finish, realistic lighting, pure solid black background #000000.",
+        obsidian: "A sharp carved obsidian artifact. Volcanic glass texture, glossy black surface with sharp edges, dramatic lighting, pure solid black background #000000.",
+        origami: "Intricate 3D origami paper art. Folded high-quality paper textures, sharp creases, soft studio lighting, pure solid black background #000000.",
+        embroidery: "Exquisite Chinese silk embroidery on a frame. Detailed thread patterns, silk sheen, intricate needlework, vibrant silk threads, pure solid black background #000000."
     };
 
     let currentStyleKey = 'neon'; 
+    let currentStylePrompt = STYLE_DATA['光影能量'].styles['neon'].p;
     const styleMenu = document.getElementById('style-menu');
+    const catList = document.getElementById('category-list');
+    const styList = document.getElementById('style-list');
 
-    // 风格菜单点击逻辑
-    document.querySelectorAll('.style-option').forEach(opt => {
-        opt.onclick = (e) => {
-            // 不再需要 stopPropagation，因为 click 事件不会触发 canvas 的 touchstart
-            document.querySelectorAll('.style-option').forEach(o => o.classList.remove('active'));
-            opt.classList.add('active');
-            currentStyleKey = opt.dataset.style;
-            styleMenu.classList.remove('show');
-            setTimeout(() => runAI(), 100);
-        };
-    });
+    function showToast(msg, duration = 2000) {
+        const t = document.getElementById('loading-toast');
+        const txt = document.getElementById('loading-text');
+        txt.innerText = msg;
+        t.style.display = 'block';
+        setTimeout(() => { if(txt.innerText === msg) t.style.display = 'none'; }, duration);
+    }
+
+    // 初始化菜单
+    function initMenu() {
+        const cats = Object.keys(STYLE_DATA);
+        cats.forEach((cat, idx) => {
+            const btn = document.createElement('div');
+            btn.className = `category-btn ${idx===0?'active':''}`;
+            btn.innerHTML = `<span>${STYLE_DATA[cat].icon}</span><span>${cat}</span>`;
+            btn.onclick = () => renderStyles(cat, btn);
+            catList.appendChild(btn);
+        });
+        renderStyles(cats[0]);
+    }
+
+    function renderStyles(catKey, btnElement) {
+        if(btnElement) {
+            document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+            btnElement.classList.add('active');
+        }
+        styList.innerHTML = '';
+        const styles = STYLE_DATA[catKey].styles;
+        Object.keys(styles).forEach(key => {
+            const s = styles[key];
+            const d = document.createElement('div');
+            d.className = `style-option ${key === currentStyleKey ? 'active' : ''}`;
+            d.innerHTML = `<span class="icon">${s.i}</span><span>${s.l}</span>`;
+            d.onclick = () => {
+                document.querySelectorAll('.style-option').forEach(o => o.classList.remove('active'));
+                d.classList.add('active');
+                currentStyleKey = key;
+                currentStylePrompt = s.p;
+                
+                // 提示当前风格
+                showToast(`🎨 已切换风格：${s.l}`);
+                
+                // 关闭菜单并清理状态，防止误触
+                styleMenu.classList.remove('show');
+                setTimeout(() => { styleMenu.style.display = 'none'; }, 200);
+                
+                setTimeout(() => runAI(), 100);
+            };
+            styList.appendChild(d);
+        });
+    }
+
+    // 初始化调用
+    initMenu();
 
     // 魔法按钮长按逻辑
     const magicBtn = document.getElementById('magicBtn');
@@ -299,15 +595,19 @@
     let isMagicLong = false;
 
     const handleMagicStart = (e) => {
+        // 仅当点击 ✨ 按钮本身时拦截，防止影响其他层
         if(e.cancelable) e.preventDefault();
         isMagicLong = false;
         magicBtn.style.transform = "scale(0.9)";
         
+        if (magicTimer) clearTimeout(magicTimer);
         magicTimer = setTimeout(() => {
             isMagicLong = true;
             styleMenu.classList.add('show');
+            // 强制渲染一次，解决部分平板 display 切换延迟
+            styleMenu.style.display = 'flex';
             if(navigator.vibrate) navigator.vibrate(50);
-        }, 500); 
+        }, 250); 
     };
 
     const handleMagicEnd = (e) => {
@@ -317,6 +617,7 @@
         if (!isMagicLong) {
             if (styleMenu.classList.contains('show')) {
                 styleMenu.classList.remove('show');
+                setTimeout(() => { styleMenu.style.display = 'none'; }, 200);
             } else {
                 runAI();
             }
@@ -336,7 +637,7 @@
         }
 
         const bounds = getDrawingBounds();
-        if (!bounds) return alert("请先画点东西");
+        if (!bounds) return;
 
         const loading = document.getElementById('loading-toast');
         const loadingText = document.getElementById('loading-text');
@@ -351,9 +652,9 @@
         const base64Img = tempC.toDataURL('image/png').split(',')[1];
 
         loading.style.display = 'block';
-        loadingText.innerText = `AI 正在构想：${document.querySelector(`[data-style="${currentStyleKey}"] span`).innerText.split(' ')[1]}`;
+        loadingText.innerText = `AI 正在构想...`; // 简化提示，因为DOM结构已变
 
-        const stylePrompt = STYLES[currentStyleKey];
+        const stylePrompt = currentStylePrompt;
         const fullPrompt = `${stylePrompt} The input image is a rough sketch. Your task is to generate a FULLY RENDERED version in the specified style. The background MUST be solid pure black (#000000). Do NOT show any of the original sketch lines or brush strokes in the result. Replace the sketch entirely with a high-quality solid object. Output image only.`;
 
         const MODEL_NAME = 'gemini-2.5-flash-image'; 
@@ -450,16 +751,23 @@
             isClrLong = true;
             document.getElementById('ai-overlay').style.display='none';
             window.lastAiBlob = null;
-            clearBtn.classList.add('shake'); setTimeout(()=>clearBtn.classList.remove('shake'),500);
+            clearBtn.classList.add('shake'); setTimeout(()=>clearBtn.classList.remove('shake'),250);
             alert("已移除 AI 图层");
-        }, 600);
+        }, 300);
     };
     const endClr = () => {
         clearBtn.style.transform="scale(1)"; clearTimeout(clrTimer);
         if(!isClrLong) {
+            if (allPaths.length === 0) return;
+            // 实现“只能点一次上一步”：清除前存一个状态，清除后存一个，并截断其他历史
+            const preClearState = JSON.stringify(allPaths);
+            allPaths = [];
             ctx.clearRect(0,0,canvas.width,canvas.height);
             document.getElementById('ai-overlay').style.display='none';
             window.lastAiBlob = null;
+            localStorage.removeItem('chalkboard_data');
+            history = [preClearState, JSON.stringify([])];
+            historyIndex = 1;
         }
     };
     clearBtn.addEventListener('mousedown', startClr); clearBtn.addEventListener('touchstart', startClr, {passive:false});
@@ -482,7 +790,7 @@
             isFsLong = true;
             document.getElementById('api-modal').style.display = 'flex';
             if (navigator.vibrate) navigator.vibrate(50);
-        }, 500);
+        }, 250);
     };
 
     const handleFsEnd = (e) => {
@@ -498,6 +806,19 @@
     fullscreenBtn.addEventListener('mouseup', handleFsEnd);
     fullscreenBtn.addEventListener('touchend', handleFsEnd);
 
+    document.getElementById('undoBtn').onclick = undo;
+    document.getElementById('redoBtn').onclick = redo;
+
+    document.getElementById('eraserBtn').onclick = function() {
+        isEraserMode = !isEraserMode;
+        this.classList.toggle('active-mode');
+    };
+
+    document.getElementById('stylusBtn').onclick = function() {
+        stylusOnlyMode = !stylusOnlyMode;
+        this.classList.toggle('active-mode');
+        this.querySelector('span').innerText = stylusOnlyMode ? '🖋️' : '🖐️';
+    };
     window.onresize = resizeCanvas;
     window.onload = resizeCanvas;
 </script>
